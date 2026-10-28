@@ -115,12 +115,24 @@
     $('open').addEventListener('click', () => { clearTimeout(timer); goToMaps(); });
     $('cancel').addEventListener('click', () => { clearTimeout(timer); $('sheet').hidden = true; });
 
-    function setTopic(id) {
+    // Picking a category adds a history entry, so the phone's back gesture returns to the category list.
+    function setTopic(id, mode = 'replace') {
       topic = id;
       const url = new URL(location.href);
       if (id) url.searchParams.set('topic', id);
       else url.searchParams.delete('topic');
-      history.replaceState(null, '', url);
+      history[mode === 'push' ? 'pushState' : 'replaceState']({ pushed: mode === 'push' }, '', url);
+    }
+
+    function backToTopics() {
+      if (history.state?.pushed) history.back();
+      else { setTopic(null); showTopics(); }
+    }
+
+    // The top link goes up one step: comments -> categories -> rating.
+    function setBackLink(toCategories) {
+      $('back').textContent = toCategories ? '← Change category' : '← Change rating';
+      $('back').href = toCategories ? location.pathname : `/r/${encodeURIComponent(slug)}`;
     }
 
     function showTopics() {
@@ -138,7 +150,7 @@
         hint.className = 'hint';
         hint.textContent = t.hint;
         card.append(label, hint);
-        card.addEventListener('click', () => { setTopic(t.id); showComments(); });
+        card.addEventListener('click', () => { setTopic(t.id, 'push'); showComments(); });
         item.append(card);
         list.append(item);
       });
@@ -146,6 +158,7 @@
         rating <= 2 ? 'What fell short?' : rating === 3 ? 'What do you want to comment on?' : 'What did you like most?';
       $('comment-step').hidden = true;
       $('topic-step').hidden = false;
+      setBackLink(false);
     }
 
     function showComments() {
@@ -154,6 +167,7 @@
       if (chosen) $('topic-name').textContent = chosen.label;
       $('topic-step').hidden = true;
       $('comment-step').hidden = false;
+      setBackLink(topics.length > 0);
       load();
     }
 
@@ -184,7 +198,23 @@
     }
 
     $('more').addEventListener('click', load);
-    $('change-topic').addEventListener('click', () => { setTopic(null); showTopics(); });
+    $('change-topic').addEventListener('click', backToTopics);
+
+    // On the comments step the top link goes back to the categories; on the category list it is a normal link.
+    $('back').addEventListener('click', (e) => {
+      if ($('comment-step').hidden || !topics.length) return;
+      e.preventDefault();
+      backToTopics();
+    });
+
+    // Back/forward (including the phone's back gesture) between the category list and the comments.
+    addEventListener('popstate', () => {
+      clearTimeout(timer);
+      $('sheet').hidden = true;
+      topic = new URLSearchParams(location.search).get('topic');
+      if (topics.some((t) => t.id === topic)) showComments();
+      else showTopics();
+    });
 
     // Restore after the browser's back button brings this page back from Google Maps.
     addEventListener('pageshow', (e) => {
