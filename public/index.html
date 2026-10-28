@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rate your visit</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main class="wrap">
+    <p class="eyebrow">Thanks for dining with us</p>
+    <h1 id="name">&nbsp;</h1>
+    <p class="muted" id="area"></p>
+
+    <p class="lead" id="lead">How was your visit?</p>
+    <div class="stars" id="stars" role="group" aria-label="Choose a rating from 1 to 5 stars"></div>
+    <p class="rating-label" id="label" aria-live="polite">Tap a star</p>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    const { slug, starSvg, api } = RS;
+    const $ = (id) => document.getElementById(id);
+    const labels = ['Poor', 'Fair', 'Good', 'Very good', 'Excellent'];
+    const starsEl = $('stars');
+    let chosen = 0;
+
+    starsEl.innerHTML = labels
+      .map((text, i) => `<button class="star" type="button" data-v="${i + 1}" aria-label="${i + 1} star${i ? 's' : ''}, ${text}">${starSvg}</button>`)
+      .join('');
+    const buttons = [...starsEl.children];
+
+    function paint(n) {
+      buttons.forEach((b, i) => b.classList.toggle('on', i < n));
+      $('label').textContent = n ? labels[n - 1] : 'Tap a star';
+    }
+
+    buttons.forEach((b) => {
+      const value = Number(b.dataset.v);
+      b.addEventListener('pointerenter', (e) => {
+        if (e.pointerType === 'mouse' && !chosen) paint(value);
+      });
+      b.addEventListener('click', () => {
+        if (chosen) return;
+        chosen = value;
+        paint(value);
+        setTimeout(() => { location.href = `/r/${encodeURIComponent(slug)}/reviews?rating=${value}`; }, 350);
+      });
+    });
+    starsEl.addEventListener('pointerleave', () => { if (!chosen) paint(0); });
+
+    // Coming back via the browser's back button restores this page from cache, so unlock the stars.
+    addEventListener('pageshow', (e) => {
+      if (e.persisted) { chosen = 0; paint(0); }
+    });
+
+    function showError(message) {
+      $('name').textContent = message;
+      for (const id of ['lead', 'stars', 'label', 'area']) $(id).hidden = true;
+    }
+
+    (async () => {
+      if (!slug) return showError('Scan the QR code at your table');
+      try {
+        const restaurant = await api('restaurant', { r: slug });
+        $('name').textContent = restaurant.name;
+        $('area').textContent = restaurant.area;
+        document.title = `Rate your visit · ${restaurant.name}`;
+      } catch {
+        showError('Restaurant not found');
+      }
+    })();
+  </script>
+</body>
+</html>

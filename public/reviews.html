@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pick a comment</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main class="wrap">
+    <a class="back" id="back" href="/">&larr; Change rating</a>
+    <h1 id="name">&nbsp;</h1>
+    <div class="stars static" id="rated"></div>
+
+    <!-- 1-2 stars only: which part of the visit fell short -->
+    <section id="topic-step" hidden>
+      <p class="lead">What fell short?</p>
+      <p class="muted">Pick the area so we can suggest comments that fit.</p>
+      <ul class="cards" id="topics"></ul>
+    </section>
+
+    <section id="comment-step" hidden>
+      <p class="lead">Pick the comment that sounds like you</p>
+      <p class="muted">Tap one and we'll copy it and open Google Maps. Paste it in, then press Post.</p>
+      <p class="topic-line" id="topic-line" hidden>About: <b id="topic-name"></b> &middot; <button class="linkbtn" id="change-topic" type="button">Change</button></p>
+      <ul class="cards" id="list" aria-live="polite"></ul>
+      <button class="btn ghost" id="more" type="button">&#8635; Show different comments</button>
+    </section>
+  </main>
+
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-body" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <h2 id="sheet-title"></h2>
+      <p class="sheet-text" id="sheet-text"></p>
+      <ol class="steps" id="steps">
+        <li>Google Maps opens the review box</li>
+        <li>Tap the box, hold, and choose <b>Paste</b></li>
+        <li>Tap <b>Post</b></li>
+      </ol>
+      <p class="muted" id="manual" hidden style="margin-bottom:16px">Automatic copy isn't available on this browser. Press and hold the text above to copy it, then continue.</p>
+      <div class="bar" id="bar"><i></i></div>
+      <button class="btn" id="open" type="button">Open Google Maps now</button>
+      <button class="btn link" id="cancel" type="button">Pick a different comment</button>
+    </div>
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    const { slug, starSvg, api } = RS;
+    const $ = (id) => document.getElementById(id);
+    const params = new URLSearchParams(location.search);
+    const rating = Number(params.get('rating'));
+    const REDIRECT_MS = 2600;
+
+    if (!slug || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+      location.replace(slug ? `/r/${encodeURIComponent(slug)}` : '/');
+    }
+
+    $('back').href = `/r/${encodeURIComponent(slug)}`;
+    $('rated').setAttribute('aria-label', `${rating} out of 5 stars`);
+    $('rated').innerHTML = Array.from({ length: 5 }, (_, i) => `<span class="${i < rating ? 'on' : ''}">${starSvg}</span>`).join('');
+
+    let reviewUrl = null;
+    let timer = null;
+    let topics = [];
+    let topic = params.get('topic');
+
+    function legacyCopy(text) {
+      try {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.cssText = 'position:fixed;top:0;opacity:0';
+        document.body.append(area);
+        area.select();
+        area.setSelectionRange(0, text.length);
+        const ok = document.execCommand('copy');
+        area.remove();
+        return ok;
+      } catch {
+        return false;
+      }
+    }
+
+    // navigator.clipboard only exists on https (or localhost); fall back to the old API on plain http.
+    function copy(text) {
+      if (navigator.clipboard?.writeText) {
+        return navigator.clipboard.writeText(text).then(() => true, () => legacyCopy(text));
+      }
+      return Promise.resolve(legacyCopy(text));
+    }
+
+    const goToMaps = () => { location.href = reviewUrl; };
+
+    async function choose(text) {
+      const copied = await copy(text);
+      $('sheet-text').textContent = text;
+      $('sheet-title').textContent = copied ? 'Comment copied ✓' : 'Copy your comment';
+      $('manual').hidden = copied;
+      $('steps').hidden = !copied;
+      $('bar').hidden = !copied;
+      $('open').textContent = copied ? 'Open Google Maps now' : 'Continue to Google Maps';
+      $('sheet').hidden = false;
+
+      if (copied) {
+        // Restart the CSS progress animation, then redirect when it finishes.
+        const fill = $('bar').firstElementChild;
+        fill.style.animation = 'none';
+        fill.offsetWidth;
+        fill.style.animation = '';
+        timer = setTimeout(goToMaps, REDIRECT_MS);
+      }
+    }
+
+    $('open').addEventListener('click', () => { clearTimeout(timer); goToMaps(); });
+    $('cancel').addEventListener('click', () => { clearTimeout(timer); $('sheet').hidden = true; });
+
+    function setTopic(id) {
+      topic = id;
+      const url = new URL(location.href);
+      if (id) url.searchParams.set('topic', id);
+      else url.searchParams.delete('topic');
+      history.replaceState(null, '', url);
+    }
+
+    function showTopics() {
+      const list = $('topics');
+      list.innerHTML = '';
+      topics.forEach((t, i) => {
+        const item = document.createElement('li');
+        const card = document.createElement('button');
+        const label = document.createElement('b');
+        const hint = document.createElement('span');
+        card.type = 'button';
+        card.className = 'card';
+        card.style.setProperty('--i', i);
+        label.textContent = t.label;
+        hint.className = 'hint';
+        hint.textContent = t.hint;
+        card.append(label, hint);
+        card.addEventListener('click', () => { setTopic(t.id); showComments(); });
+        item.append(card);
+        list.append(item);
+      });
+      $('comment-step').hidden = true;
+      $('topic-step').hidden = false;
+    }
+
+    function showComments() {
+      const chosen = rating <= 2 ? topics.find((t) => t.id === topic) : null;
+      $('topic-line').hidden = !chosen;
+      if (chosen) $('topic-name').textContent = chosen.label;
+      $('topic-step').hidden = true;
+      $('comment-step').hidden = false;
+      load();
+    }
+
+    async function load() {
+      const list = $('list');
+      $('more').disabled = true;
+      list.innerHTML = '<li class="skel"></li>'.repeat(6);
+      try {
+        const data = await api('comments', { r: slug, rating, ...(topic && { topic }) });
+        reviewUrl = data.reviewUrl;
+        list.innerHTML = '';
+        data.comments.forEach((text, i) => {
+          const item = document.createElement('li');
+          const card = document.createElement('button');
+          card.type = 'button';
+          card.className = 'card';
+          card.style.setProperty('--i', i);
+          card.textContent = text;
+          card.addEventListener('click', () => choose(text));
+          item.append(card);
+          list.append(item);
+        });
+      } catch {
+        list.innerHTML = '<li class="error">Couldn\'t load comments. Check your connection and try again.</li>';
+      } finally {
+        $('more').disabled = false;
+      }
+    }
+
+    $('more').addEventListener('click', load);
+    $('change-topic').addEventListener('click', () => { setTopic(null); showTopics(); });
+
+    // Restore after the browser's back button brings this page back from Google Maps.
+    addEventListener('pageshow', (e) => {
+      if (e.persisted) { clearTimeout(timer); $('sheet').hidden = true; }
+    });
+
+    (async () => {
+      try {
+        const restaurant = await api('restaurant', { r: slug });
+        $('name').textContent = restaurant.name;
+        document.title = `Pick a comment · ${restaurant.name}`;
+        topics = restaurant.complaintTopics;
+      } catch {
+        $('name').textContent = 'Your review';
+      }
+
+      // Low ratings first ask which part of the visit fell short.
+      if (rating <= 2 && topics.length && !topics.some((t) => t.id === topic)) {
+        setTopic(null);
+        showTopics();
+      } else {
+        showComments();
+      }
+    })();
+  </script>
+</body>
+</html>
