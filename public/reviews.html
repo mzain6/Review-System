@@ -12,10 +12,10 @@
     <h1 id="name">&nbsp;</h1>
     <div class="stars static" id="rated"></div>
 
-    <!-- 1-2 stars only: which part of the visit fell short -->
+    <!-- 1-2 stars: which part fell short. 3 stars: what to comment on. 4-5 stars: what they liked most. -->
     <section id="topic-step" hidden>
-      <p class="lead">What fell short?</p>
-      <p class="muted">Pick the area so we can suggest comments that fit.</p>
+      <p class="lead" id="topic-title"></p>
+      <p class="muted">Pick one so we can suggest comments that fit.</p>
       <ul class="cards" id="topics"></ul>
     </section>
 
@@ -142,12 +142,14 @@
         item.append(card);
         list.append(item);
       });
+      $('topic-title').textContent =
+        rating <= 2 ? 'What fell short?' : rating === 3 ? 'What do you want to comment on?' : 'What did you like most?';
       $('comment-step').hidden = true;
       $('topic-step').hidden = false;
     }
 
     function showComments() {
-      const chosen = rating <= 2 ? topics.find((t) => t.id === topic) : null;
+      const chosen = topics.find((t) => t.id === topic);
       $('topic-line').hidden = !chosen;
       if (chosen) $('topic-name').textContent = chosen.label;
       $('topic-step').hidden = true;
@@ -194,13 +196,13 @@
         const restaurant = await api('restaurant', { r: slug });
         $('name').textContent = restaurant.name;
         document.title = `Pick a comment · ${restaurant.name}`;
-        topics = restaurant.complaintTopics;
+        topics = (rating <= 2 ? restaurant.complaintTopics : restaurant.feedbackTopics) ?? [];
       } catch {
         $('name').textContent = 'Your review';
       }
 
-      // Low ratings first ask which part of the visit fell short.
-      if (rating <= 2 && topics.length && !topics.some((t) => t.id === topic)) {
+      // Every rating first asks which part of the visit the comments should be about.
+      if (topics.length && !topics.some((t) => t.id === topic)) {
         setTopic(null);
         showTopics();
       } else {

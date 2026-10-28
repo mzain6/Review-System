@@ -1,4 +1,4 @@
-import { COMPLAINT_TOPICS, generateComments, getRestaurant, reviewUrl } from '../lib/comments.js';
+import { generateComments, getRestaurant, reviewUrl, topicsFor } from '../lib/comments.js';
 
 // Per-IP cap on AI calls so a bored scanner can't burn through the Groq quota.
 // Over the cap, visitors still get comments, just from the built-in fallback set.
@@ -25,8 +25,9 @@ export default async function handler(req, res) {
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
     return res.status(400).json({ error: 'rating must be a whole number from 1 to 5' });
   }
-  if (topic && !Object.hasOwn(COMPLAINT_TOPICS, topic)) {
-    return res.status(400).json({ error: `topic must be one of: ${Object.keys(COMPLAINT_TOPICS).join(', ')}` });
+  const topics = topicsFor(rating);
+  if (topic && !Object.hasOwn(topics, topic)) {
+    return res.status(400).json({ error: `topic must be one of: ${Object.keys(topics).join(', ')}` });
   }
 
   const ip = String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? '').split(',')[0].trim();

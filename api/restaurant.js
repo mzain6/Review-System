@@ -1,6 +1,8 @@
-import { COMPLAINT_TOPICS, getRestaurant, reviewUrl } from '../lib/comments.js';
+import { COMPLAINT_TOPICS, FEEDBACK_TOPICS, getRestaurant, reviewUrl } from '../lib/comments.js';
 
-const complaintTopics = Object.entries(COMPLAINT_TOPICS).map(([id, { label, hint }]) => ({ id, label, hint }));
+const describe = (topics) => Object.entries(topics).map(([id, { label, hint }]) => ({ id, label, hint }));
+const complaintTopics = describe(COMPLAINT_TOPICS);
+const feedbackTopics = describe(FEEDBACK_TOPICS);
 
 export default function handler(req, res) {
   const restaurant = getRestaurant(new URL(req.url, 'http://localhost').searchParams.get('r'));
@@ -11,5 +13,6 @@ export default function handler(req, res) {
     area: restaurant.area ?? '',
     reviewUrl: reviewUrl(restaurant),
     complaintTopics,
+    feedbackTopics,
   });
 }
